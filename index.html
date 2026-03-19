@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>1분호흡</title>
+    <link rel="stylesheet" href="/src/index.css">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #05070a;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            touch-action: manipulation;
+            overscroll-behavior: none;
+            padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        }
+        .space-bg {
+            background: radial-gradient(circle at 50% 50%, #0f172a 0%, #05070a 100%);
+        }
+        .dashboard-bg {
+            background-color: #05070a;
+            color: #ffffff;
+        }
+        .clean-text { color: #ffffff !important; text-shadow: none !important; }
+        .timer-val { font-variant-numeric: tabular-nums; font-weight: 800; }
+        .top-gradient {
+            background: linear-gradient(to bottom, rgba(5,7,10,1) 0%, rgba(5,7,10,0.8) 60%, transparent 100%);
+        }
+        .mode-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .mode-btn.active { background-color: white; color: black; transform: scale(1.05); }
+        button { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            padding: 24px;
+            backdrop-filter: blur(10px);
+        }
+        .hidden-view { display: none !important; }
+        .bar { transition: height 0.5s ease-out; }
+
+        @keyframes pulse-gentle {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+        .complete-msg {
+            animation: pulse-gentle 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="space-bg min-h-screen">
+
+    <!-- 메인 호흡 뷰 -->
+    <div id="exercise-view" style="position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="w-full pt-10 pb-20 text-center z-30 top-gradient" style="position:relative;">
+            <!-- 내 기록 아이콘 버튼 -->
+            <button id="show-stats-btn" class="absolute top-8 right-6 p-3 rounded-full bg-white/5 border border-white/10 text-white/60 hover:text-white hover:bg-white/10 transition-all active:scale-90">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            </button>
+
+            <p id="mode-label" class="text-[10px] font-bold text-slate-500 tracking-[0.4em] uppercase mb-1 italic">4-7-8</p>
+            <div class="flex flex-col items-center">
+                <h2 id="phase-text" class="clean-text text-2xl md:text-3xl font-bold opacity-80">준비되셨나요?</h2>
+                <div id="timer-display" class="timer-val text-7xl md:text-8xl clean-text mt-2 opacity-0 transition-opacity duration-500">0</div>
+            </div>
+        </div>
+
+        <div id="canvas-container" style="position:absolute;inset:0;pointer-events:none;z-index:10;">
+            <canvas id="pacerCanvas" style="pointer-events:none;"></canvas>
+        </div>
+
+        <div style="position:relative;z-index:30;margin-top:auto;" class="w-full pb-10 pt-16 flex flex-col items-center gap-6 bg-gradient-to-t from-[#05070a] via-[#05070a]/95 to-transparent">
+            <div class="flex bg-white/5 backdrop-blur-xl p-1 rounded-2xl border border-white/10 mb-2">
+                <button id="btn-478" class="mode-btn active px-5 py-2 rounded-xl text-xs font-bold">4-7-8</button>
+                <button id="btn-BOX" class="mode-btn px-5 py-2 rounded-xl text-xs font-bold text-slate-400">박스</button>
+                <button id="btn-COHERENT" class="mode-btn px-5 py-2 rounded-xl text-xs font-bold text-slate-400">균형</button>
+            </div>
+
+            <div class="flex gap-4">
+                <button id="startBtn" class="bg-white text-black px-12 py-4 rounded-full font-black shadow-2xl transition-all active:scale-95 hover:bg-slate-100 min-w-[140px]">시작하기</button>
+                <button id="resetBtn" class="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-full font-bold backdrop-blur-md transition-all active:scale-95 hidden">다시하기</button>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <div class="text-[10px] font-black text-white/60 uppercase tracking-widest">Cycle <span id="current-cycle" class="text-white">0</span></div>
+                <div class="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-[#f97316] w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 내 기록 대시보드 뷰 -->
+    <div id="stats-view" class="hidden-view dashboard-bg min-h-screen p-6 overflow-y-auto z-50 fixed inset-0">
+        <div class="max-w-md mx-auto">
+            <div class="flex justify-between items-center mb-10 mt-4">
+                <h1 class="text-2xl font-bold text-white tracking-tight">내 기록</h1>
+                <button id="close-stats-btn" class="p-2 text-white/40 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="card">
+                    <div class="text-orange-500 text-[11px] font-bold uppercase tracking-widest mb-2">연속 출석</div>
+                    <div class="text-3xl font-black text-white" id="stat-attendance">0일</div>
+                </div>
+                <div class="card">
+                    <div class="text-orange-500 text-[11px] font-bold uppercase tracking-widest mb-2">누적 포인트</div>
+                    <div class="text-3xl font-black text-white" id="stat-points">0P</div>
+                </div>
+                <div class="card">
+                    <div class="text-orange-500 text-[11px] font-bold uppercase tracking-widest mb-2">오늘 호흡</div>
+                    <div class="text-3xl font-black text-white" id="stat-today">0초</div>
+                </div>
+                <div class="card">
+                    <div class="text-orange-500 text-[11px] font-bold uppercase tracking-widest mb-2">총 호흡</div>
+                    <div class="text-3xl font-black text-white" id="stat-total">0초</div>
+                </div>
+            </div>
+
+            <div class="card mb-10">
+                <h3 class="text-orange-500 text-[11px] font-bold mb-8 uppercase tracking-widest">최근 7일 호흡 (초)</h3>
+                <div class="flex items-end justify-between h-40 px-2" id="weekly-chart">
+                </div>
+                <div class="flex justify-between mt-6 text-[10px] text-white/60 font-bold px-1">
+                    <span>6일전</span><span>5일전</span><span>4일전</span><span>3일전</span><span>2일전</span><span>어제</span><span class="text-orange-500 underline underline-offset-4">오늘</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 앱 종료 확인 모달 -->
+    <div id="exit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;padding:24px;">
+        <div style="background:#1e293b;border-radius:24px;padding:32px;width:100%;max-width:280px;text-align:center;border:1px solid rgba(255,255,255,0.1);">
+            <p style="font-size:18px;font-weight:700;color:#fff;margin:0 0 8px 0;">앱을 종료할까요?</p>
+            <p style="font-size:14px;color:rgba(255,255,255,0.5);margin:0 0 24px 0;">호흡 기록은 저장됩니다</p>
+            <div style="display:flex;gap:12px;">
+                <button id="exit-cancel-btn" style="flex:1;padding:14px;border-radius:100px;background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:15px;border:none;cursor:pointer;">취소</button>
+                <button id="exit-confirm-btn" style="flex:1;padding:14px;border-radius:100px;background:#f97316;color:#fff;font-weight:700;font-size:15px;border:none;cursor:pointer;">종료</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+
+        // UI Elements
+        const canvas = document.getElementById('pacerCanvas');
+        const ctx = canvas.getContext('2d');
+        const phaseText = document.getElementById('phase-text');
+        const timerDisplay = document.getElementById('timer-display');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const currentCycleDisplay = document.getElementById('current-cycle');
+        const progressBar = document.getElementById('progress-bar');
+        const modeLabel = document.getElementById('mode-label');
+
+        const MODES = {
+            '478': { name: '4-7-8', total: 19 },
+            'BOX': { name: '박스', total: 16 },
+            'COHERENT': { name: '균형', total: 10 }
+        };
+
+        const MAX_CYCLES = 3;
+        let currentModeKey = '478';
+        let isRunning = false;
+        let startTime = 0;
+        let animationId;
+        let camX = 0;
+        let camY = 0;
+        let currentZoom = 1.0;
+        const targetZoom = 2.4;
+        let user = null;
+        let db = null;
+        let fbFns = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'breath';
+
+        function setMode(key) {
+            if (isRunning) return;
+            currentModeKey = key;
+            modeLabel.innerText = MODES[key].name;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active', 'text-white');
+                btn.classList.add('text-slate-400');
+            });
+            document.getElementById(`btn-${key}`).classList.add('active');
+            document.getElementById(`btn-${key}`).classList.remove('text-slate-400');
+            camX = 0; camY = 0;
+            currentCycleDisplay.innerText = "0";
+            progressBar.style.width = "0%";
+            drawWorld(0);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function getPathPoint(t) {
+            const segmentWidth = 600;
+            const amplitude = 130;
+            const mode = MODES[currentModeKey];
+            const cycleTime = ((t % mode.total) + mode.total) % mode.total;
+            let x, y, phase, timeLeft;
+
+            if (currentModeKey === '478') {
+                if (cycleTime <= 4) {
+                    const p = cycleTime / 4;
+                    x = p * (segmentWidth * (4 / 19)); y = -(Math.sin((p * Math.PI) / 2) * amplitude);
+                    phase = "숨을 들이마셔요"; timeLeft = Math.ceil(4 - cycleTime);
+                } else if (cycleTime <= 11) {
+                    const p = (cycleTime - 4) / 7;
+                    x = (segmentWidth * (4/19)) + (p * (segmentWidth * (7/19))); y = -amplitude;
+                    phase = "잠시 멈추세요"; timeLeft = Math.ceil(7 - (cycleTime - 4));
+                } else {
+                    const p = (cycleTime - 11) / 8;
+                    x = (segmentWidth * (11/19)) + (p * (segmentWidth * (8/19)));
+                    const easedP = (1 - Math.cos(p * Math.PI)) / 2;
+                    y = -amplitude + (easedP * amplitude);
+                    phase = "천천히 내뱉으세요"; timeLeft = Math.ceil(8 - (cycleTime - 11));
+                }
+            } else if (currentModeKey === 'BOX') {
+                const size = 180; const stage = Math.floor(cycleTime / 4); const p = (cycleTime % 4) / 4; const offset = size / 2;
+                if (stage === 0) { x = -offset; y = offset - (p * size); phase = "숨을 들이마셔요"; }
+                else if (stage === 1) { x = -offset + (p * size); y = -offset; phase = "잠시 멈추세요"; }
+                else if (stage === 2) { x = offset; y = -offset + (p * size); phase = "천천히 내뱉으세요"; }
+                else { x = offset - (p * size); y = offset; phase = "잠시 멈추세요"; }
+                timeLeft = Math.ceil(4 - (cycleTime % 4));
+            } else if (currentModeKey === 'COHERENT') {
+                const p = (cycleTime % 5) / 5; const isExhaling = cycleTime >= 5; const stageWidth = segmentWidth / 2;
+                x = (isExhaling ? stageWidth : 0) + (p * stageWidth) - (segmentWidth/4);
+                const easedP = (1 - Math.cos(p * Math.PI) ) / 2;
+                if (!isExhaling) { y = -(easedP * amplitude); phase = "숨을 들이마셔요"; }
+                else { y = -amplitude + (easedP * amplitude); phase = "천천히 내뱉으세요"; }
+                timeLeft = Math.ceil(5 - (cycleTime % 5));
+            }
+            return { x, y, phase, timeLeft: Math.max(0, timeLeft) };
+        }
+
+        function drawWorld(t) {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight * (currentModeKey === 'BOX' ? 0.38 : 0.45);
+            ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+            const ball = getPathPoint(t);
+            const mode = MODES[currentModeKey];
+            if (isRunning) {
+                currentZoom += (targetZoom - currentZoom) * 0.05;
+                timerDisplay.style.opacity = "1";
+            }
+            camX += (ball.x - camX) * 0.08; camY += (ball.y - camY) * 0.08;
+            ctx.save();
+            ctx.translate(centerX, centerY); ctx.scale(currentZoom, currentZoom); ctx.translate(-camX, -camY);
+            ctx.beginPath(); ctx.lineWidth = 10; ctx.lineCap = 'butt'; ctx.lineJoin = 'round'; ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+            if (currentModeKey === 'BOX') { const size = 180; const offset = size / 2; ctx.strokeRect(-offset, -offset, size, size); }
+            else { const stepSize = 0.05; const startP = getPathPoint(0); ctx.moveTo(startP.x, startP.y); for(let i = stepSize; i <= mode.total; i += stepSize) { const p = getPathPoint(i); ctx.lineTo(p.x, p.y); } ctx.stroke(); }
+
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, 22, 0, Math.PI * 2); ctx.fillStyle = "rgba(249, 115, 22, 0.25)"; ctx.fill();
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, 9, 0, Math.PI * 2); ctx.fillStyle = "#f97316"; ctx.shadowBlur = 45; ctx.shadowColor = "#f97316"; ctx.fill();
+            ctx.restore();
+
+            if (isRunning) {
+                phaseText.innerText = ball.phase;
+                timerDisplay.innerText = ball.timeLeft;
+                const totalProgress = (t / (mode.total * MAX_CYCLES)) * 100;
+                progressBar.style.width = `${Math.min(100, totalProgress)}%`;
+            }
+        }
+
+        function stopExercise() {
+            isRunning = false;
+            cancelAnimationFrame(animationId);
+            startBtn.innerText = "다시 시작하기";
+            phaseText.innerText = "세트 완료! 수고하셨습니다.";
+            phaseText.classList.add('complete-msg');
+            timerDisplay.innerText = "✓";
+            progressBar.style.width = "100%";
+        }
+
+        function animate(timestamp) {
+            if (!isRunning) return;
+            if (!startTime) startTime = timestamp;
+            const elapsed = (timestamp - startTime) / 1000;
+            const mode = MODES[currentModeKey];
+            const currentCycleNum = Math.floor(elapsed / mode.total) + 1;
+            currentCycleDisplay.innerText = Math.min(MAX_CYCLES, currentCycleNum);
+
+            if (elapsed >= mode.total * MAX_CYCLES) {
+                updateStats(Math.floor(elapsed));
+                drawWorld(mode.total * MAX_CYCLES);
+                setTimeout(stopExercise, 500);
+                return;
+            }
+            drawWorld(elapsed);
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function on(el, fn) {
+            el.addEventListener('touchend', (e) => { e.preventDefault(); fn(); }, { passive: false });
+            el.addEventListener('click', fn);
+        }
+
+        on(startBtn, () => {
+            if (!isRunning) {
+                isRunning = true; startTime = 0; startBtn.innerText = "일시정지"; resetBtn.classList.remove('hidden');
+                phaseText.classList.remove('complete-msg');
+                animate(performance.now());
+            } else {
+                isRunning = false; startBtn.innerText = "계속하기"; cancelAnimationFrame(animationId);
+            }
+        });
+
+        on(resetBtn, () => {
+            isRunning = false; cancelAnimationFrame(animationId);
+            startTime = 0; camX = 0; camY = 0; currentZoom = 1.0;
+            progressBar.style.width = "0%"; timerDisplay.style.opacity = "0";
+            currentCycleDisplay.innerText = "0"; startBtn.innerText = "시작하기";
+            phaseText.innerText = "준비되셨나요?";
+            phaseText.classList.remove('complete-msg');
+            resetBtn.classList.add('hidden');
+            drawWorld(0);
+        });
+
+        on(document.getElementById('btn-478'), () => setMode('478'));
+        on(document.getElementById('btn-BOX'), () => setMode('BOX'));
+        on(document.getElementById('btn-COHERENT'), () => setMode('COHERENT'));
+
+        on(document.getElementById('show-stats-btn'), () => {
+            document.getElementById('stats-view').classList.remove('hidden-view');
+        });
+        on(document.getElementById('close-stats-btn'), () => {
+            document.getElementById('stats-view').classList.add('hidden-view');
+        });
+
+        // 버튼 이벤트 등록 완료 후 캔버스 초기화
+        drawWorld(0);
+
+        // ── 사운드 / 햅틱 ──────────────────────────────────────────────
+        let audioCtx = null;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return audioCtx;
+        }
+        function playTone(freq, dur, type = 'sine', vol = 0.15) {
+            try {
+                const ctx2 = getAudioCtx();
+                const o = ctx2.createOscillator();
+                const g = ctx2.createGain();
+                o.connect(g); g.connect(ctx2.destination);
+                o.type = type; o.frequency.value = freq;
+                g.gain.setValueAtTime(vol, ctx2.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + dur);
+                o.start(ctx2.currentTime); o.stop(ctx2.currentTime + dur);
+            } catch(e) {}
+        }
+        function vibrate(pattern) { if (navigator.vibrate) navigator.vibrate(pattern); }
+
+        // ── 사용자 ID ──────────────────────────────────────────────────
+        function getUserId() {
+            let uid = localStorage.getItem('1min_breath_uid');
+            if (!uid) {
+                uid = 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+                localStorage.setItem('1min_breath_uid', uid);
+            }
+            return uid;
+        }
+        getUserId();
+
+        // ── 뒤로가기 제스처 차단 + 종료 모달 ─────────────────────────
+        const exitModal = document.getElementById('exit-modal');
+        history.pushState(null, null, location.href);
+        window.addEventListener('popstate', () => {
+            history.pushState(null, null, location.href);
+            exitModal.style.display = 'flex';
+        });
+        document.getElementById('exit-cancel-btn').addEventListener('click', () => {
+            vibrate(10); exitModal.style.display = 'none';
+        });
+        document.getElementById('exit-confirm-btn').addEventListener('click', () => {
+            vibrate([10, 30, 10]); exitModal.style.display = 'none';
+        });
+
+        // ── 버튼 사운드/햅틱 연결 ─────────────────────────────────────
+        const origOn = on;
+        function onWithFeedback(el, fn, freq = 440, dur = 0.06) {
+            origOn(el, () => { playTone(freq, dur, 'sine', 0.12); vibrate(15); fn(); });
+        }
+        // startBtn / resetBtn 은 위에서 이미 on() 등록됨, 여기서는 모드 버튼 + 공통 탭에 추가
+        startBtn.addEventListener('touchstart', () => { playTone(523, 0.08, 'sine', 0.12); vibrate(20); }, { passive: true });
+        resetBtn.addEventListener('touchstart', () => { playTone(440, 0.06, 'sine', 0.1); vibrate(15); }, { passive: true });
+        document.getElementById('btn-478').addEventListener('touchstart', () => { playTone(440, 0.05, 'sine', 0.1); vibrate(10); }, { passive: true });
+        document.getElementById('btn-BOX').addEventListener('touchstart', () => { playTone(440, 0.05, 'sine', 0.1); vibrate(10); }, { passive: true });
+        document.getElementById('btn-COHERENT').addEventListener('touchstart', () => { playTone(440, 0.05, 'sine', 0.1); vibrate(10); }, { passive: true });
+
+        // ── Stats: localStorage 기반 (Firebase는 옵션) ──────────────────
+
+        const LS_KEY = 'breath_stats_v1';
+        const todayStr = () => new Date().toISOString().slice(0, 10);
+
+        function loadLocalStats() {
+            try {
+                const raw = localStorage.getItem(LS_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch { return null; }
+        }
+
+        function defaultStats() {
+            return { attendance: 1, todayTime: 0, totalTime: 0, points: 0, lastVisit: todayStr(), weeklyHistory: [0,0,0,0,0,0,0] };
+        }
+
+        function saveLocalStats(data) {
+            try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
+        }
+
+        function getOrCreateStats() {
+            let data = loadLocalStats();
+            if (!data) { data = defaultStats(); saveLocalStats(data); }
+            // 날짜가 바뀌었으면 출석 체크 및 주간 기록 갱신
+            if (data.lastVisit !== todayStr()) {
+                const history = data.weeklyHistory || [0,0,0,0,0,0,0];
+                history.push(data.todayTime || 0);
+                data.weeklyHistory = history.slice(-7);
+                data.todayTime = 0;
+                data.attendance = (data.attendance || 0) + 1;
+                data.lastVisit = todayStr();
+                saveLocalStats(data);
+            }
+            return data;
+        }
+
+        function renderChart(history) {
+            const chart = document.getElementById('weekly-chart');
+            chart.innerHTML = '';
+            const max = Math.max(...history, 60);
+            history.slice(-7).forEach((val) => {
+                const height = (val / max) * 100;
+                const bar = document.createElement('div');
+                bar.className = 'w-8 rounded-t-xl bar flex flex-col justify-end';
+                bar.style.height = `${Math.max(8, height)}%`;
+                bar.style.backgroundColor = val > 0 ? '#f97316' : 'rgba(255, 255, 255, 0.05)';
+                chart.appendChild(bar);
+            });
+        }
+
+        function renderStats(data) {
+            document.getElementById('stat-attendance').innerText = `${data.attendance || 1}일`;
+            document.getElementById('stat-today').innerText = `${data.todayTime || 0}초`;
+            document.getElementById('stat-total').innerText = `${data.totalTime || 0}초`;
+            document.getElementById('stat-points').innerText = `${data.points || 0}P`;
+            renderChart(data.weeklyHistory || [0,0,0,0,0,0,0]);
+        }
+
+        async function updateStats(seconds) {
+            if (seconds <= 0) return;
+            const data = getOrCreateStats();
+            data.todayTime = (data.todayTime || 0) + seconds;
+            data.totalTime = (data.totalTime || 0) + seconds;
+            data.points = (data.points || 0) + seconds * 10;
+            saveLocalStats(data);
+            renderStats(data);
+
+            // Firebase 동기화 (가능한 경우)
+            if (user && db && fbFns) {
+                try {
+                    const statsRef = fbFns.doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'stats');
+                    await fbFns.updateDoc(statsRef, {
+                        todayTime: fbFns.increment(seconds),
+                        totalTime: fbFns.increment(seconds),
+                        points: fbFns.increment(seconds * 10)
+                    });
+                } catch (e) { console.error("Firebase sync failed", e); }
+            }
+        }
+
+        // 첫 로드 시 localStorage에서 즉시 렌더링
+        renderStats(getOrCreateStats());
+
+        // Firebase 초기화 (보조 역할 - 동적 import)
+        (async () => {
+            try {
+                const rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+                if (rawConfig) {
+                    const firebaseConfig = JSON.parse(rawConfig);
+                    const [{ initializeApp }, { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }, { getFirestore, doc: firestoreDoc, updateDoc, increment }] = await Promise.all([
+                        import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"),
+                        import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"),
+                        import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js")
+                    ]);
+                    const app = initializeApp(firebaseConfig);
+                    const auth = getAuth(app);
+                    db = getFirestore(app);
+                    fbFns = { doc: firestoreDoc, updateDoc, increment };
+
+                    const initUser = async () => {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    };
+
+                    onAuthStateChanged(auth, (u) => { if (u) { user = u; } });
+                    initUser();
+                }
+            } catch (e) {
+                console.error("Firebase init error:", e);
+            }
+        })();
+    </script>
+</body>
+</html>
