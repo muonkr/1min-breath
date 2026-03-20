@@ -5,9 +5,12 @@ export default defineConfig({
   brand: {
     displayName: '1분호흡',
     primaryColor: '#f97316',
-    icon: 'icon.png',
+    icon: 'https://raw.githubusercontent.com/muonkr/1min-breath/main/public/icon.png',
   },
   permissions: [],
+  navigationBar: {
+    withBackButton: true,
+  },
   web: {
     host: 'localhost',
     port: 5173,

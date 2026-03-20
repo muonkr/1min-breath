@@ -149,6 +149,38 @@
     </div>
 
     <script type="module">
+        import { loadFullScreenAd, showFullScreenAd } from '@apps-in-toss/web-framework';
+
+        // ===== 전면형 광고 =====
+        const INTERSTITIAL_AD_ID = 'ait-ad-test-interstitial-id';
+        let interstitialLoaded = false;
+
+        function preloadInterstitialAd() {
+            if (!loadFullScreenAd.isSupported()) return;
+            loadFullScreenAd({
+                options: { adGroupId: INTERSTITIAL_AD_ID },
+                onEvent: (e) => { if (e.type === 'loaded') interstitialLoaded = true; },
+                onError: () => { interstitialLoaded = false; }
+            });
+        }
+
+        function showInterstitialAd() {
+            if (!showFullScreenAd.isSupported() || !interstitialLoaded) return;
+            if (audioCtx) audioCtx.suspend();
+            showFullScreenAd({
+                options: { adGroupId: INTERSTITIAL_AD_ID },
+                onEvent: (e) => {
+                    if (e.type === 'dismissed' || e.type === 'show') {
+                        if (audioCtx) audioCtx.resume();
+                        interstitialLoaded = false;
+                        preloadInterstitialAd();
+                    }
+                },
+                onError: () => {
+                    if (audioCtx) audioCtx.resume();
+                }
+            });
+        }
 
         // UI Elements
         const canvas = document.getElementById('pacerCanvas');
@@ -285,6 +317,7 @@
             phaseText.classList.add('complete-msg');
             timerDisplay.innerText = "✓";
             progressBar.style.width = "100%";
+            showInterstitialAd();
         }
 
         function animate(timestamp) {
@@ -516,6 +549,9 @@
                 console.error("Firebase init error:", e);
             }
         })();
+
+        // 앱 시작 시 광고 프리로드
+        preloadInterstitialAd();
     </script>
 </body>
 </html>
